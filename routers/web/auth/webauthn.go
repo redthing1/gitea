@@ -54,7 +54,9 @@ func WebAuthnPasskeyAssertion(ctx *context.Context) {
 		return
 	}
 
-	assertion, sessionData, err := wa.WebAuthn.BeginDiscoverableLogin()
+	assertion, sessionData, err := wa.WebAuthn.BeginDiscoverableLogin(
+		webauthn.WithUserVerification(protocol.VerificationRequired),
+	)
 	if err != nil {
 		ctx.ServerError("webauthn.BeginDiscoverableLogin", err)
 		return
