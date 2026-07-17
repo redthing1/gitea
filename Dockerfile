@@ -1,12 +1,14 @@
-# syntax=docker/dockerfile:1
+ARG GITEA_VERSION=dev
+
 # Build frontend on the native platform to avoid QEMU-related issues with nodejs ecosystem
 FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.26-alpine3.24 AS frontend-build
+ARG GITEA_VERSION
 RUN apk --no-cache add build-base git nodejs pnpm
 WORKDIR /src
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
-COPY --exclude=.git/ . .
-RUN make frontend
+RUN pnpm install --frozen-lockfile
+COPY . .
+RUN GITHUB_REF_NAME=main make frontend
 
 # Build backend for each target platform
 FROM docker.io/library/golang:1.26-alpine3.24 AS build-env
@@ -14,7 +16,7 @@ FROM docker.io/library/golang:1.26-alpine3.24 AS build-env
 ARG GITEA_VERSION
 ARG TAGS=""
 ENV TAGS="bindata timetzdata $TAGS"
-ARG CGO_EXTRA_CFLAGS
+ARG CGO_EXTRA_CFLAGS=""
 
 # Build deps
 RUN apk --no-cache add \
@@ -24,15 +26,10 @@ RUN apk --no-cache add \
 WORKDIR ${GOPATH}/src/gitea.dev
 COPY go.mod go.sum ./
 RUN go mod download
-# Use COPY instead of bind mount as read-only one breaks makefile state tracking and read-write one needs binary to be moved as it's discarded.
-# ".git" directory is mounted separately later only for version data extraction.
-COPY --exclude=.git/ . .
+COPY . .
 COPY --from=frontend-build /src/public/assets public/assets
 
-# Build gitea, .git mount is required for version data
-RUN --mount=type=cache,target="/root/.cache/go-build" \
-    --mount=type=bind,source=".git/",target=".git/" \
-    make backend
+RUN GITHUB_REF_NAME=main make backend EXTRA_GOFLAGS=-buildvcs=false
 
 COPY docker/root /tmp/local
 
