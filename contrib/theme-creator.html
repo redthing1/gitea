@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gitea Theme Creator</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: #24292f;
+      background: #f6f8fa;
+      font: 14px/1.45 system-ui, sans-serif;
+    }
+    button, input, select, textarea { font: inherit; }
+    button, .file-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      padding: 6px 12px;
+      border: 1px solid #afb8c1;
+      border-radius: 6px;
+      color: #24292f;
+      background: #fff;
+      cursor: pointer;
+    }
+    button:hover, .file-button:hover { background: #f3f4f6; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    input[type="file"] { display: none; }
+    input[type="text"], select, textarea {
+      width: 100%;
+      border: 1px solid #afb8c1;
+      border-radius: 6px;
+      color: #24292f;
+      background: #fff;
+    }
+    input[type="text"], select { height: 34px; padding: 6px 9px; }
+    textarea { min-height: 140px; padding: 10px; resize: vertical; font-family: ui-monospace, monospace; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 4px; font-size: 22px; }
+    h2 { margin-bottom: 12px; font-size: 16px; }
+    h3 { margin-bottom: 8px; font-size: 14px; }
+    .app { max-width: 1400px; margin: auto; padding: 24px; }
+    .intro { margin-bottom: 18px; }
+    .intro p { margin-bottom: 0; color: #57606a; }
+    .toolbar, .panel {
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; padding: 12px; margin-bottom: 16px; }
+    .toolbar-field { width: 180px; }
+    .toolbar-field label, .field-label { display: block; margin-bottom: 4px; color: #57606a; font-size: 12px; font-weight: 600; }
+    .status { flex: 1; min-width: 180px; color: #57606a; text-align: right; }
+    .workspace { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; }
+    .panel { padding: 14px; }
+    .controls { align-self: start; }
+    .control-group + .control-group { margin-top: 18px; padding-top: 16px; border-top: 1px solid #d8dee4; }
+    .color-field { display: grid; grid-template-columns: 38px 1fr auto; gap: 8px; align-items: center; margin: 8px 0; }
+    .color-field input[type="color"] { width: 38px; height: 32px; padding: 2px; border: 1px solid #afb8c1; border-radius: 5px; background: #fff; }
+    .color-field code { color: #57606a; font-size: 11px; }
+    .empty { padding: 50px 20px; color: #57606a; text-align: center; }
+    .preview-shell {
+      overflow: hidden;
+      border: 1px solid var(--color-secondary, #d0d7de);
+      border-radius: 8px;
+      color: var(--color-text, #24292f);
+      background: var(--color-body, #fff);
+    }
+    .preview-nav {
+      display: flex;
+      gap: 18px;
+      align-items: center;
+      padding: 12px 16px;
+      color: var(--color-nav-text, #fff);
+      background: var(--color-nav-bg, #24292f);
+    }
+    .preview-nav strong { margin-right: auto; }
+    .preview-nav span { color: var(--color-nav-text, #fff); opacity: .82; }
+    .preview-content { padding: 18px; }
+    .repo-title { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 18px; }
+    .repo-title a, .preview-shell a { color: var(--color-primary, #4183c4); }
+    .tabs { display: flex; gap: 18px; margin-bottom: 16px; border-bottom: 1px solid var(--color-secondary, #d0d7de); }
+    .tab { padding: 8px 2px; color: var(--color-text-light-2, #57606a); }
+    .tab.active { color: var(--color-text, #24292f); border-bottom: 2px solid var(--color-primary, #4183c4); }
+    .preview-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(240px, .6fr); gap: 14px; }
+    .g-card { overflow: hidden; border: 1px solid var(--color-secondary, #d0d7de); border-radius: 7px; background: var(--color-box-body, #fff); }
+    .g-card-header { padding: 10px 12px; border-bottom: 1px solid var(--color-secondary, #d0d7de); background: var(--color-box-header, #f6f8fa); font-weight: 600; }
+    .g-card-body { padding: 12px; }
+    .issue { display: flex; gap: 10px; }
+    .issue-dot { width: 10px; height: 10px; margin-top: 5px; border-radius: 50%; background: var(--color-green, #21ba45); }
+    .muted { color: var(--color-text-light-2, #57606a); }
+    .actions { display: flex; gap: 8px; margin-top: 12px; }
+    .g-button { padding: 6px 10px; border: 1px solid var(--color-secondary, #d0d7de); border-radius: 6px; color: var(--color-text, #24292f); background: var(--color-button, var(--color-box-body, #fff)); }
+    .g-button.primary { border-color: var(--color-primary, #4183c4); color: var(--color-primary-contrast, #fff); background: var(--color-primary, #4183c4); }
+    .g-input { width: 100%; margin-top: 10px; padding: 7px 9px; border: 1px solid var(--color-input-border, var(--color-secondary, #d0d7de)); border-radius: 6px; color: var(--color-input-text, var(--color-text, #24292f)); background: var(--color-input-background, #fff); }
+    .labels { display: flex; flex-wrap: wrap; gap: 6px; }
+    .label { padding: 3px 7px; border-radius: 999px; color: var(--color-label-text, var(--color-text, #24292f)); background: var(--color-label-bg, #d8dee4); }
+    .alerts { display: grid; gap: 8px; margin-top: 12px; }
+    .alert { padding: 8px 10px; border: 1px solid; border-radius: 6px; }
+    .alert.success { border-color: var(--color-success-border, var(--color-green, #21ba45)); color: var(--color-success-text, var(--color-green, #21ba45)); background: var(--color-success-bg, transparent); }
+    .alert.warning { border-color: var(--color-warning-border, var(--color-yellow, #fbbd08)); color: var(--color-warning-text, var(--color-yellow, #fbbd08)); background: var(--color-warning-bg, transparent); }
+    .alert.error { border-color: var(--color-error-border, var(--color-red, #db2828)); color: var(--color-error-text, var(--color-red, #db2828)); background: var(--color-error-bg, transparent); }
+    .code { margin-top: 14px; overflow: hidden; border: 1px solid var(--color-secondary, #d0d7de); border-radius: 7px; background: var(--color-code-bg, #f6f8fa); font: 12px/1.6 ui-monospace, monospace; }
+    .code-row { display: grid; grid-template-columns: 40px 1fr; padding: 2px 8px; }
+    .code-row .line { color: var(--color-text-light-3, #6e7781); user-select: none; }
+    .code-row.added { color: var(--color-diff-added-fg, var(--color-text, #24292f)); background: var(--color-diff-added-row-bg, #dafbe1); }
+    .code-row.removed { color: var(--color-diff-removed-fg, var(--color-text, #24292f)); background: var(--color-diff-removed-row-bg, #ffebe9); }
+    details { margin-top: 16px; }
+    summary { cursor: pointer; font-weight: 600; }
+    .import-area, .output-area { margin-top: 10px; }
+    .output-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+    #output { min-height: 260px; }
+    @media (max-width: 850px) {
+      .workspace, .preview-grid { grid-template-columns: 1fr; }
+      .status { flex-basis: 100%; text-align: left; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="intro">
+      <h1>Gitea Theme Creator</h1>
+      <p>Load a complete Gitea theme, tune its main colors, then export the updated CSS.</p>
+    </header>
+
+    <section class="toolbar" aria-label="Theme actions">
+      <label class="file-button" for="theme-file">Load theme CSS</label>
+      <input id="theme-file" type="file" accept=".css,text/css">
+      <div class="toolbar-field">
+        <label for="theme-name">File name</label>
+        <input id="theme-name" type="text" value="theme-custom.css" disabled>
+      </div>
+      <div class="toolbar-field">
+        <label for="display-name">Display name</label>
+        <input id="display-name" type="text" value="Custom" disabled>
+      </div>
+      <div class="toolbar-field">
+        <label for="color-scheme">Color scheme</label>
+        <select id="color-scheme" disabled>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+      <span id="status" class="status" role="status">Load an existing Gitea theme to begin.</span>
+    </section>
+
+    <section class="workspace">
+      <aside class="panel controls">
+        <h2>Palette</h2>
+        <div id="controls"><div class="empty">No theme loaded.</div></div>
+        <details>
+          <summary>Paste theme CSS</summary>
+          <div class="import-area">
+            <textarea id="import-css" aria-label="Theme CSS to import" placeholder="Paste a complete theme CSS file here"></textarea>
+            <button id="load-pasted" type="button">Load pasted CSS</button>
+          </div>
+        </details>
+      </aside>
+
+      <section>
+        <div id="preview" class="preview-shell" aria-label="Theme preview">
+          <nav class="preview-nav"><strong>Gitea</strong><span>Dashboard</span><span>Explore</span><span>Help</span></nav>
+          <div class="preview-content">
+            <div class="repo-title"><span>◉</span><a>octocat</a><span>/</span><strong>hello-world</strong></div>
+            <div class="tabs"><span class="tab active">Code</span><span class="tab">Issues 12</span><span class="tab">Pull requests 3</span><span class="tab">Actions</span></div>
+            <div class="preview-grid">
+              <div class="g-card">
+                <div class="g-card-header">Recent issues</div>
+                <div class="g-card-body">
+                  <div class="issue"><span class="issue-dot"></span><div><strong>Make theming simple and pleasant</strong><div class="muted">#42 opened by octocat</div></div></div>
+                  <div class="actions"><button class="g-button primary">New issue</button><button class="g-button">Watch</button></div>
+                  <input class="g-input" value="Filter issues" aria-label="Preview input">
+                </div>
+              </div>
+              <div class="g-card">
+                <div class="g-card-header">Details</div>
+                <div class="g-card-body">
+                  <div class="labels"><span class="label">design</span><span class="label">theme</span><span class="label">help wanted</span></div>
+                  <div class="alerts"><div class="alert success">Build passed</div><div class="alert warning">Review requested</div><div class="alert error">Merge conflict</div></div>
+                </div>
+              </div>
+            </div>
+            <div class="code">
+              <div class="code-row"><span class="line">18</span><span>const theme = loadTheme();</span></div>
+              <div class="code-row removed"><span class="line">19</span><span>- requireBuildKit();</span></div>
+              <div class="code-row added"><span class="line">19</span><span>+ previewTheme(theme);</span></div>
+            </div>
+          </div>
+        </div>
+
+        <details open>
+          <summary>Export</summary>
+          <div class="output-area">
+            <div class="output-actions"><button id="copy-css" type="button" disabled>Copy CSS</button><button id="download-css" type="button" disabled>Download CSS</button></div>
+            <textarea id="output" aria-label="Generated theme CSS" readonly placeholder="Your updated theme CSS will appear here"></textarea>
+          </div>
+        </details>
+      </section>
+    </section>
+  </main>
+
+  <style id="preview-theme"></style>
+  <script>
+    const groups = [
+      {name: 'Core', colors: [
+        ['--color-primary', 'Accent'],
+        ['--color-body', 'Page'],
+        ['--color-nav-bg', 'Navigation'],
+        ['--color-box-header', 'Panel header'],
+        ['--color-box-body', 'Panel'],
+        ['--color-text', 'Text'],
+        ['--color-text-light-2', 'Muted text'],
+        ['--color-secondary', 'Border'],
+        ['--color-input-background', 'Input'],
+        ['--color-code-bg', 'Code'],
+      ]},
+      {name: 'Status and diff', colors: [
+        ['--color-green', 'Success'],
+        ['--color-yellow', 'Warning'],
+        ['--color-red', 'Danger'],
+        ['--color-blue', 'Info'],
+        ['--color-diff-added-row-bg', 'Added line'],
+        ['--color-diff-removed-row-bg', 'Removed line'],
+      ]},
+    ];
+
+    const state = {source: '', values: new Map()};
+    const themeFile = document.querySelector('#theme-file');
+    const themeName = document.querySelector('#theme-name');
+    const displayName = document.querySelector('#display-name');
+    const colorScheme = document.querySelector('#color-scheme');
+    const status = document.querySelector('#status');
+    const controls = document.querySelector('#controls');
+    const output = document.querySelector('#output');
+    const previewTheme = document.querySelector('#preview-theme');
+    const copyCss = document.querySelector('#copy-css');
+    const downloadCss = document.querySelector('#download-css');
+
+    function escapeRegExp(value) {
+      return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function extractVariables(css) {
+      const values = new Map();
+      for (const match of css.matchAll(/(--[-\w]+)\s*:\s*([^;]+);/g)) values.set(match[1], match[2].trim());
+      return values;
+    }
+
+    function replaceVariable(css, name, value) {
+      const pattern = new RegExp(`(${escapeRegExp(name)}\\s*:\\s*)([^;]+)(;)`, 'g');
+      return css.replace(pattern, `$1${value}$3`);
+    }
+
+    function directColor(value) {
+      const match = value?.trim().match(/^#([\da-f]{3}|[\da-f]{6})$/i);
+      if (!match) return null;
+      const hex = match[1].length === 3 ? [...match[1]].map((digit) => digit.repeat(2)).join('') : match[1];
+      return `#${hex}`;
+    }
+
+    function quoted(value) {
+      return `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
+    }
+
+    function sanitizeFileName(value) {
+      let name = value.trim().replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '');
+      if (!name.startsWith('theme-')) name = `theme-${name || 'custom'}`;
+      if (!name.endsWith('.css')) name += '.css';
+      return name;
+    }
+
+    function renderControls() {
+      controls.replaceChildren();
+      for (const group of groups) {
+        const section = document.createElement('section');
+        section.className = 'control-group';
+        const heading = document.createElement('h3');
+        heading.textContent = group.name;
+        section.append(heading);
+        for (const [name, label] of group.colors) {
+          const value = directColor(state.values.get(name));
+          if (!value) continue;
+          const row = document.createElement('label');
+          row.className = 'color-field';
+          const input = document.createElement('input');
+          input.type = 'color';
+          input.value = value;
+          input.dataset.variable = name;
+          input.setAttribute('aria-label', label);
+          const text = document.createElement('span');
+          text.textContent = label;
+          const code = document.createElement('code');
+          code.textContent = value;
+          input.addEventListener('input', () => {
+            state.values.set(name, input.value);
+            code.textContent = input.value;
+            updateOutput();
+          });
+          row.append(input, text, code);
+          section.append(row);
+        }
+        controls.append(section);
+      }
+    }
+
+    function updateOutput() {
+      let css = state.source;
+      for (const group of groups) {
+        for (const [name] of group.colors) {
+          const value = state.values.get(name);
+          if (value) css = replaceVariable(css, name, value);
+        }
+      }
+      css = replaceVariable(css, '--theme-display-name', quoted(displayName.value.trim() || 'Custom'));
+      css = replaceVariable(css, '--theme-color-scheme', quoted(colorScheme.value));
+      output.value = css;
+      previewTheme.textContent = `#preview {${[...state.values].map(([name, value]) => `${name}: ${value};`).join('')}}`;
+    }
+
+    function loadTheme(css, fileName = 'theme-custom.css') {
+      const values = extractVariables(css);
+      if (!values.has('--color-body') || !values.has('--color-text')) {
+        status.textContent = 'That file does not look like a complete Gitea theme.';
+        return;
+      }
+      state.source = css;
+      state.values = values;
+      themeName.value = sanitizeFileName(fileName);
+      displayName.value = (values.get('--theme-display-name') || 'Custom').replace(/^['"]|['"]$/g, '');
+      const scheme = (values.get('--theme-color-scheme') || '').replace(/^['"]|['"]$/g, '');
+      colorScheme.value = scheme === 'dark' ? 'dark' : 'light';
+      for (const element of [themeName, displayName, colorScheme, copyCss, downloadCss]) element.disabled = false;
+      renderControls();
+      updateOutput();
+      status.textContent = `Loaded ${themeName.value}`;
+    }
+
+    themeFile.addEventListener('change', async () => {
+      const [file] = themeFile.files;
+      if (!file) return;
+      loadTheme(await file.text(), file.name);
+      themeFile.value = '';
+    });
+
+    document.querySelector('#load-pasted').addEventListener('click', () => {
+      const css = document.querySelector('#import-css').value;
+      if (css.trim()) loadTheme(css);
+    });
+
+    displayName.addEventListener('input', updateOutput);
+    colorScheme.addEventListener('change', updateOutput);
+    themeName.addEventListener('change', () => { themeName.value = sanitizeFileName(themeName.value); });
+
+    copyCss.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(output.value);
+      } catch {
+        output.select();
+        document.execCommand('copy');
+      }
+      status.textContent = 'Theme CSS copied.';
+    });
+
+    downloadCss.addEventListener('click', () => {
+      themeName.value = sanitizeFileName(themeName.value);
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([output.value], {type: 'text/css'}));
+      link.download = themeName.value;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href));
+      status.textContent = `Downloaded ${themeName.value}`;
+    });
+  </script>
+</body>
+</html>
