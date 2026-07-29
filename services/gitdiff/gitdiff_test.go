@@ -601,7 +601,7 @@ func TestDiffLine_GetCommentSide(t *testing.T) {
 }
 
 func TestGetDiffRangeWithWhitespaceBehavior(t *testing.T) {
-	gitRepo, err := git.OpenRepository("../../modules/git/tests/repos/repo5_pulls")
+	gitRepo, err := git.OpenRepositoryLocal(t.Context(), "../../modules/git/tests/repos/repo5_pulls")
 	require.NoError(t, err)
 
 	defer gitRepo.Close()
@@ -1186,9 +1186,9 @@ revert
 from :2
 D test2.txt
 D test10.txt`
-	require.NoError(t, gitcmd.NewCommand("fast-import").WithDir(pull.BaseRepo.RepoPath()).WithStdinBytes([]byte(stdin)).Run(t.Context()))
+	require.NoError(t, gitcmd.NewCommand("fast-import").WithRepo(pull.BaseRepo).WithStdinBytes([]byte(stdin)).Run(t.Context()))
 
-	gitRepo, err := git.OpenRepository(pull.BaseRepo.RepoPath())
+	gitRepo, err := git.OpenRepository(t.Context(), pull.BaseRepo)
 	assert.NoError(t, err)
 	defer gitRepo.Close()
 

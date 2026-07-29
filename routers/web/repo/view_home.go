@@ -18,7 +18,6 @@ import (
 	unit_model "gitea.dev/models/unit"
 	user_model "gitea.dev/models/user"
 	"gitea.dev/modules/git"
-	"gitea.dev/modules/gitrepo"
 	"gitea.dev/modules/htmlutil"
 	"gitea.dev/modules/httplib"
 	"gitea.dev/modules/log"
@@ -35,23 +34,16 @@ func checkOutdatedBranch(ctx *context.Context) {
 	if !(ctx.Repo.Permission.IsAdmin() || ctx.Repo.Permission.IsOwner()) {
 		return
 	}
-
-	// get the head commit of the branch since ctx.Repo.CommitID is not always the head commit of `ctx.Repo.BranchName`
-	commit, err := ctx.Repo.GitRepo.GetBranchCommit(ctx, ctx.Repo.BranchName)
-	if err != nil {
-		log.Error("GetBranchCommitID: %v", err)
-		// Don't return an error page, as it can be rechecked the next time the user opens the page.
+	if !ctx.Repo.RefFullName.IsBranch() {
 		return
 	}
 
-	dbBranch, err := git_model.GetBranch(ctx, ctx.Repo.Repository.ID, ctx.Repo.BranchName)
+	dbBranch, err := git_model.GetBranchExisting(ctx, ctx.Repo.Repository.ID, ctx.Repo.RefFullName.ShortName())
 	if err != nil {
-		log.Error("GetBranch: %v", err)
-		// Don't return an error page, as it can be rechecked the next time the user opens the page.
-		return
+		return // ignore the error which can only be "not exists"
 	}
 
-	if dbBranch.CommitID != commit.ID.String() {
+	if dbBranch.CommitID != ctx.Repo.CommitID {
 		ctx.Flash.Warning(ctx.Tr("repo.error.broken_git_hook", "https://docs.gitea.com/help/faq#push-hook--webhook--actions-arent-running"), true)
 	}
 }
@@ -142,7 +134,7 @@ func prepareHomeSidebarLicenses(ctx *context.Context) {
 }
 
 func prepareToRenderDirectory(ctx *context.Context) {
-	entries := renderDirectoryFiles(ctx, 1*time.Second)
+	treeEntry, subEntries := renderDirectoryFiles(ctx, 1*time.Second)
 	if ctx.Written() {
 		return
 	}
@@ -152,12 +144,11 @@ func prepareToRenderDirectory(ctx *context.Context) {
 		ctx.Data["Title"] = ctx.Tr("repo.file.title", ctx.Repo.Repository.Name+"/"+ctx.Repo.TreePath, ctx.Repo.RefFullName.ShortName())
 	}
 
-	subfolder, readmeFile, err := findReadmeFileInEntries(ctx, ctx.Repo.TreePath, entries, true)
+	subfolder, readmeFile, err := findReadmeFileInRepoTree(ctx, ctx.Repo.TreePath, treeEntry, subEntries)
 	if err != nil {
-		ctx.ServerError("findReadmeFileInEntries", err)
+		ctx.ServerError("findReadmeFileInRepo", err)
 		return
 	}
-
 	prepareToRenderReadmeFile(ctx, subfolder, readmeFile)
 }
 
@@ -223,7 +214,7 @@ func handleRepoEmptyOrBroken(ctx *context.Context) {
 	showEmpty := true
 	if ctx.Repo.GitRepo == nil {
 		// in case the repo really exists and works, but the status was incorrectly marked as "broken", we need to open and check it again
-		ctx.Repo.GitRepo, _ = gitrepo.RepositoryFromRequestContextOrOpen(ctx, ctx.Repo.Repository)
+		ctx.Repo.GitRepo, _ = git.RepositoryFromRequestContextOrOpen(ctx, ctx.Repo.Repository)
 	}
 	if ctx.Repo.GitRepo != nil {
 		reallyEmpty, err := ctx.Repo.GitRepo.IsEmpty(ctx)
@@ -357,7 +348,8 @@ func redirectFollowSymlink(ctx *context.Context, treePathEntry *git.TreeEntry) b
 		return false
 	}
 	if treePathEntry.IsLink() {
-		if res, err := git.EntryFollowLinks(ctx, ctx.Repo.GitRepo, ctx.Repo.Commit, ctx.Repo.TreePath, treePathEntry); err == nil {
+		res, err := git.EntryFollowLinks(ctx, ctx.Repo.GitRepo, ctx.Repo.Commit, ctx.Repo.TreePath, treePathEntry)
+		if err == nil {
 			redirect := ctx.Repo.RepoLink + "/src/" + ctx.Repo.RefTypeNameSubURL() + "/" + util.PathEscapeSegments(res.TargetFullPath) + "?" + ctx.Req.URL.RawQuery
 			ctx.Redirect(redirect)
 			return true
@@ -447,13 +439,13 @@ func Home(ctx *context.Context) {
 	prepareFuncs := []func(*context.Context){
 		prepareClonePanel,
 		prepareHomeSidebarRepoTopics,
-		checkOutdatedBranch,
 		prepareToRenderDirOrFile(entry),
 		prepareRecentlyPushedNewBranches,
 	}
 
 	if isTreePathRoot {
 		prepareFuncs = append(prepareFuncs,
+			checkOutdatedBranch,
 			prepareUpstreamDivergingInfo,
 			prepareHomeSidebarLicenses,
 			prepareHomeSidebarCitationFile(entry),

@@ -11,7 +11,6 @@ import (
 	"maps"
 	"net"
 	"net/url"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -224,22 +223,6 @@ type Repository struct {
 
 func init() {
 	db.RegisterModel(new(Repository))
-}
-
-func RelativePath(ownerName, repoName string) string {
-	return strings.ToLower(ownerName) + "/" + strings.ToLower(repoName) + ".git"
-}
-
-// RelativePath should be a unix style path like "owner-name/repo-name.git"
-func (repo *Repository) RelativePath() string {
-	return RelativePath(repo.OwnerName, repo.Name)
-}
-
-type StorageRepo string
-
-// RelativePath should be an unix style path like username/reponame.git
-func (sr StorageRepo) RelativePath() string {
-	return string(sr)
 }
 
 // SanitizedOriginalURL returns a sanitized OriginalURL
@@ -578,16 +561,6 @@ func (repo *Repository) GetBaseRepo(ctx context.Context) (err error) {
 // IsGenerated returns whether _this_ repository was generated from a template
 func (repo *Repository) IsGenerated() bool {
 	return repo.TemplateID != 0
-}
-
-// RepoPath returns repository path by given user and repository name.
-func RepoPath(userName, repoName string) string { //revive:disable-line:exported
-	return filepath.Join(setting.RepoRootPath, filepath.Clean(strings.ToLower(userName)), filepath.Clean(strings.ToLower(repoName)+".git"))
-}
-
-// RepoPath returns the repository path
-func (repo *Repository) RepoPath() string {
-	return RepoPath(repo.OwnerName, repo.Name)
 }
 
 // Link returns the repository relative url
