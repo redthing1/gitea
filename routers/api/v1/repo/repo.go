@@ -14,6 +14,7 @@ import (
 	"time"
 
 	activities_model "gitea.dev/models/activities"
+	audit_model "gitea.dev/models/audit"
 	"gitea.dev/models/db"
 	"gitea.dev/models/organization"
 	"gitea.dev/models/perm"
@@ -33,6 +34,7 @@ import (
 	"gitea.dev/modules/web"
 	"gitea.dev/routers/api/v1/utils"
 	actions_service "gitea.dev/services/actions"
+	"gitea.dev/services/audit"
 	"gitea.dev/services/context"
 	"gitea.dev/services/convert"
 	feed_service "gitea.dev/services/feed"
@@ -277,7 +279,7 @@ func CreateUserRepo(ctx *context.APIContext, owner *user_model.User, opt api.Cre
 
 // Create one repository of mine
 func Create(ctx *context.APIContext) {
-	// swagger:operation POST /user/repos repository user createCurrentUserRepo
+	// swagger:operation POST /user/repos user createCurrentUserRepo
 	// ---
 	// summary: Create a repository
 	// consumes:
@@ -298,7 +300,7 @@ func Create(ctx *context.APIContext) {
 	//     description: The repository with the same name already exists.
 	//   "422":
 	//     "$ref": "#/responses/validationError"
-	opt := web.GetForm(ctx).(*api.CreateRepoOption)
+	opt := web.GetForm[*api.CreateRepoOption](ctx)
 	if ctx.Doer.IsOrganization() {
 		// Shouldn't reach this condition, but just in case.
 		ctx.APIError(http.StatusUnprocessableEntity, "not allowed creating repository for organization")
@@ -342,7 +344,7 @@ func Generate(ctx *context.APIContext) {
 	//     description: The repository with the same name already exists.
 	//   "422":
 	//     "$ref": "#/responses/validationError"
-	form := web.GetForm(ctx).(*api.GenerateRepoOption)
+	form := web.GetForm[*api.GenerateRepoOption](ctx)
 
 	if !ctx.Repo.Repository.IsTemplate {
 		ctx.APIError(http.StatusUnprocessableEntity, "this is not a template repo")
@@ -484,7 +486,7 @@ func CreateOrgRepo(ctx *context.APIContext) {
 	//     "$ref": "#/responses/notFound"
 	//   "403":
 	//     "$ref": "#/responses/forbidden"
-	opt := web.GetForm(ctx).(*api.CreateRepoOption)
+	opt := web.GetForm[*api.CreateRepoOption](ctx)
 	orgName := ctx.PathParam("org")
 	org := prepareDoerCreateRepoInOrg(ctx, orgName)
 	if ctx.Written() {
@@ -603,7 +605,7 @@ func Edit(ctx *context.APIContext) {
 	//   "422":
 	//     "$ref": "#/responses/validationError"
 
-	opts := *web.GetForm(ctx).(*api.EditRepoOption)
+	opts := *web.GetForm[*api.EditRepoOption](ctx)
 
 	if err := updateBasicProperties(ctx, opts); err != nil {
 		return
@@ -727,6 +729,10 @@ func updateBasicProperties(ctx *context.APIContext, opts api.EditRepoOption) err
 	if err := repo_service.UpdateRepository(ctx, repo, visibilityChanged); err != nil {
 		ctx.APIErrorInternal(err)
 		return err
+	}
+
+	if visibilityChanged {
+		audit.Record(ctx, audit_model.RepositoryVisibility, repo, "visibility", repo.IsPrivate)
 	}
 
 	if updateRepoLicense {
@@ -1153,15 +1159,6 @@ func Delete(ctx *context.APIContext) {
 
 	owner := ctx.Repo.Owner
 	repo := ctx.Repo.Repository
-
-	canDelete, err := repo_module.CanUserDelete(ctx, repo, ctx.Doer)
-	if err != nil {
-		ctx.APIErrorInternal(err)
-		return
-	} else if !canDelete {
-		ctx.APIError(http.StatusForbidden, "Given user is not owner of organization.")
-		return
-	}
 
 	if ctx.Repo.GitRepo != nil {
 		ctx.Repo.GitRepo.Close()

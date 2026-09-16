@@ -480,7 +480,7 @@ func UpdateIssueAssignee(ctx *context.Context) {
 
 // ChangeIssueReaction create a reaction for issue
 func ChangeIssueReaction(ctx *context.Context) {
-	form := web.GetForm(ctx).(*forms.ReactionForm)
+	form := web.GetForm[*forms.ReactionForm](ctx)
 	issue := GetActionIssue(ctx)
 	if ctx.Written() {
 		return
@@ -581,7 +581,7 @@ func GetIssueAttachments(ctx *context.Context) {
 	}
 	attachments := make([]*api.Attachment, len(issue.Attachments))
 	for i := 0; i < len(issue.Attachments); i++ {
-		attachments[i] = convert.ToAttachment(ctx.Repo.Repository, issue.Attachments[i])
+		attachments[i] = convert.ToAttachment(ctx, ctx.Repo.Repository, issue.Attachments[i])
 	}
 	ctx.JSON(http.StatusOK, attachments)
 }

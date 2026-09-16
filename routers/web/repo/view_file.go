@@ -127,7 +127,7 @@ func handleFileViewRenderSource(ctx *context.Context, attrs *attribute.Attribute
 	statuses := make([]*charset.EscapeStatus, len(fileContent))
 	for i, line := range fileContent {
 		statuses[i], fileContent[i] = charset.EscapeControlHTML(line, ctx.Locale)
-		status = status.Or(statuses[i])
+		status.Combine(statuses[i])
 	}
 	ctx.Data["EscapeStatus"] = status
 	ctx.Data["FileContent"] = fileContent
@@ -255,7 +255,7 @@ func prepareFileView(ctx *context.Context, entry *git.TreeEntry) {
 
 func prepareFileViewEditorButtons(ctx *context.Context) bool {
 	// archived or mirror repository, the buttons should not be shown
-	if !ctx.Repo.Repository.CanEnableEditor() {
+	if !ctx.Repo.Repository.CanContentChange() {
 		return true
 	}
 

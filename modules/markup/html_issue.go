@@ -123,7 +123,7 @@ func issueIndexPatternProcessor(ctx *RenderContext, node *html.Node) {
 		case IssueNameStyleAlphanumeric:
 			ref = references.FindRenderizableReferenceAlphanumeric(node.Data)
 		case IssueNameStyleRegexp:
-			pattern, err := regexplru.GetCompiled(ctx.RenderOptions.Metas["regexp"])
+			pattern, err := regexplru.UserCache().GetCompiled(ctx.RenderOptions.Metas["regexp"])
 			if err != nil {
 				return
 			}
@@ -149,7 +149,7 @@ func issueIndexPatternProcessor(ctx *RenderContext, node *html.Node) {
 		if hasExtTrackFormat && !ref.IsPull {
 			ctx.RenderOptions.Metas["index"] = ref.Issue
 
-			res, err := vars.Expand(ctx.RenderOptions.Metas["format"], ctx.RenderOptions.Metas)
+			res, err := vars.ExpandCurlyBrace(ctx.RenderOptions.Metas["format"], ctx.RenderOptions.Metas)
 			if err != nil {
 				// here we could just log the error and continue the rendering
 				log.Error("unable to expand template vars for ref %s, err: %v", ref.Issue, err)

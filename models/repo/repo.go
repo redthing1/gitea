@@ -19,7 +19,6 @@ import (
 	"gitea.dev/models/db"
 	"gitea.dev/models/unit"
 	user_model "gitea.dev/models/user"
-	"gitea.dev/modules/base"
 	"gitea.dev/modules/git"
 	giturl "gitea.dev/modules/git/url"
 	"gitea.dev/modules/htmlutil"
@@ -265,7 +264,7 @@ func (repo *Repository) SizeDetailsString() string {
 	var str strings.Builder
 	sizeDetails := repo.SizeDetails()
 	for _, detail := range sizeDetails {
-		fmt.Fprintf(&str, "%s: %s, ", detail.Name, base.FileSize(detail.Size))
+		fmt.Fprintf(&str, "%s: %s, ", detail.Name, util.FormatByteSize(detail.Size))
 	}
 	return strings.TrimSuffix(str.String(), ", ")
 }
@@ -363,17 +362,6 @@ func (repo *Repository) CommitLink(commitID string) (result string) {
 func (repo *Repository) APIURL(ctxOpt ...context.Context) string {
 	ctx := util.OptionalArg(ctxOpt, context.TODO())
 	return httplib.MakeAbsoluteURL(ctx, setting.AppSubURL+"/api/v1/repos/"+url.PathEscape(repo.OwnerName)+"/"+url.PathEscape(repo.Name))
-}
-
-// GetCommitsCountCacheKey returns cache key used for commits count caching.
-func (repo *Repository) GetCommitsCountCacheKey(contextName string, isRef bool) string {
-	var prefix string
-	if isRef {
-		prefix = "ref"
-	} else {
-		prefix = "commit"
-	}
-	return fmt.Sprintf("commits-count-%d-%s-%s", repo.ID, prefix, contextName)
 }
 
 // LoadUnits loads repo units into repo.Units
@@ -587,30 +575,18 @@ func (repo *Repository) IsOwnedBy(userID int64) bool {
 	return repo.OwnerID == userID
 }
 
-// CanCreateBranch returns true if repository meets the requirements for creating new branches.
-func (repo *Repository) CanCreateBranch() bool {
-	return !repo.IsMirror
-}
-
 // CanEnablePulls returns true if repository meets the requirements of accepting pulls.
 func (repo *Repository) CanEnablePulls() bool {
-	return !repo.IsMirror && !repo.IsEmpty
+	return repo.CanContentChange() && !repo.IsEmpty
+}
+
+func (repo *Repository) CanContentChange() bool {
+	return !repo.IsMirror && !repo.IsArchived
 }
 
 // AllowsPulls returns true if repository meets the requirements of accepting pulls and has them enabled.
 func (repo *Repository) AllowsPulls(ctx context.Context) bool {
 	return repo.CanEnablePulls() && repo.UnitEnabled(ctx, unit.TypePullRequests)
-}
-
-// CanEnableEditor returns true if repository meets the requirements of web editor.
-// FIXME: most CanEnableEditor calls should be replaced with CanContentChange
-// And all other like CanCreateBranch / CanEnablePulls should also be updated
-func (repo *Repository) CanEnableEditor() bool {
-	return repo.CanContentChange()
-}
-
-func (repo *Repository) CanContentChange() bool {
-	return !repo.IsMirror && !repo.IsArchived
 }
 
 // DescriptionHTML does special handles to description and return HTML string.

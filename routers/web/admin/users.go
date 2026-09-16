@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	audit_model "gitea.dev/models/audit"
 	"gitea.dev/models/auth"
 	"gitea.dev/models/db"
 	org_model "gitea.dev/models/organization"
@@ -21,15 +22,16 @@ import (
 	"gitea.dev/modules/log"
 	"gitea.dev/modules/optional"
 	"gitea.dev/modules/setting"
-	"gitea.dev/modules/structs"
 	"gitea.dev/modules/templates"
 	"gitea.dev/modules/web"
 	"gitea.dev/routers/web/explore"
 	user_setting "gitea.dev/routers/web/user/setting"
+	"gitea.dev/services/audit"
 	auth_service "gitea.dev/services/auth"
 	"gitea.dev/services/context"
 	"gitea.dev/services/forms"
 	"gitea.dev/services/mailer"
+	org_service "gitea.dev/services/org"
 	user_service "gitea.dev/services/user"
 )
 
@@ -103,7 +105,7 @@ func NewUser(ctx *context.Context) {
 
 // NewUserPost response for adding a new user
 func NewUserPost(ctx *context.Context) {
-	form := web.GetForm(ctx).(*forms.AdminCreateUserForm)
+	form := web.GetForm[*forms.AdminCreateUserForm](ctx)
 	ctx.Data["Title"] = ctx.Tr("admin.users.new_account")
 	ctx.Data["PageIsAdminUsers"] = true
 	ctx.Data["DefaultUserVisibilityMode"] = setting.Service.DefaultUserVisibilityMode
@@ -171,6 +173,9 @@ func NewUserPost(ctx *context.Context) {
 	}
 
 	if err := user_model.AdminCreateUser(ctx, u, &user_model.Meta{}, overwriteDefault); err != nil {
+		var errNameReserved db.ErrNameReserved
+		var errNamePatternNotAllowed db.ErrNamePatternNotAllowed
+		var errNameCharsNotAllowed db.ErrNameCharsNotAllowed
 		switch {
 		case user_model.IsErrUserAlreadyExist(err):
 			ctx.Data["Err_UserName"] = true
@@ -181,15 +186,15 @@ func NewUserPost(ctx *context.Context) {
 		case user_model.IsErrEmailInvalid(err), user_model.IsErrEmailCharIsNotSupported(err):
 			ctx.Data["Err_Email"] = true
 			ctx.RenderWithErrDeprecated(ctx.Tr("form.email_invalid"), tplUserNew, &form)
-		case db.IsErrNameReserved(err):
+		case errors.As(err, &errNameReserved):
 			ctx.Data["Err_UserName"] = true
-			ctx.RenderWithErrDeprecated(ctx.Tr("user.form.name_reserved", err.(db.ErrNameReserved).Name), tplUserNew, &form)
-		case db.IsErrNamePatternNotAllowed(err):
+			ctx.RenderWithErrDeprecated(ctx.Tr("user.form.name_reserved", errNameReserved.Name), tplUserNew, &form)
+		case errors.As(err, &errNamePatternNotAllowed):
 			ctx.Data["Err_UserName"] = true
-			ctx.RenderWithErrDeprecated(ctx.Tr("user.form.name_pattern_not_allowed", err.(db.ErrNamePatternNotAllowed).Pattern), tplUserNew, &form)
-		case db.IsErrNameCharsNotAllowed(err):
+			ctx.RenderWithErrDeprecated(ctx.Tr("user.form.name_pattern_not_allowed", errNamePatternNotAllowed.Pattern), tplUserNew, &form)
+		case errors.As(err, &errNameCharsNotAllowed):
 			ctx.Data["Err_UserName"] = true
-			ctx.RenderWithErrDeprecated(ctx.Tr("user.form.name_chars_not_allowed", err.(db.ErrNameCharsNotAllowed).Name), tplUserNew, &form)
+			ctx.RenderWithErrDeprecated(ctx.Tr("user.form.name_chars_not_allowed", errNameCharsNotAllowed.Name), tplUserNew, &form)
 		default:
 			ctx.ServerError("CreateUser", err)
 		}
@@ -199,6 +204,8 @@ func NewUserPost(ctx *context.Context) {
 	if !user_model.IsEmailDomainAllowed(u.Email) {
 		ctx.Flash.Warning(ctx.Tr("form.email_domain_is_not_allowed", u.Email))
 	}
+
+	audit.Record(ctx, audit_model.UserCreate, u)
 
 	log.Trace("Account created by admin (%s): %s", ctx.Doer.Name, u.Name)
 
@@ -290,18 +297,11 @@ func ViewUser(ctx *context.Context) {
 	ctx.Data["Emails"] = emails
 	ctx.Data["EmailsTotal"] = len(emails)
 
-	orgs, err := db.Find[org_model.Organization](ctx, org_model.FindOrgOptions{
-		ListOptions:       db.ListOptionsAll,
-		UserID:            u.ID,
-		IncludeVisibility: structs.VisibleTypePrivate,
-	})
+	ctx.Data["UserOrgs"], err = org_model.GetUserOrganizations(ctx, u.ID)
 	if err != nil {
 		ctx.ServerError("FindOrgs", err)
 		return
 	}
-
-	ctx.Data["Users"] = orgs // needed to be able to use explore/user_list template
-	ctx.Data["OrgsTotal"] = len(orgs)
 
 	ctx.HTML(http.StatusOK, tplUserView)
 }
@@ -336,7 +336,7 @@ func EditUserPost(ctx *context.Context) {
 		return
 	}
 
-	form := web.GetForm(ctx).(*forms.AdminEditUserForm)
+	form := web.GetForm[*forms.AdminEditUserForm](ctx)
 	if ctx.HasError() {
 		ctx.HTML(http.StatusOK, tplUserEdit)
 		return
@@ -472,6 +472,7 @@ func ImpersonateUser(ctx *context.Context) {
 		ctx.ServerError("unable to impersonate user", err)
 		return
 	}
+	audit.Record(ctx, audit_model.UserImpersonation, u)
 	ctx.JSONRedirect(setting.AppSubURL + "/user/settings")
 }
 
@@ -515,6 +516,65 @@ func DeleteUser(ctx *context.Context) {
 	ctx.Redirect(setting.AppSubURL + "/-/admin/users")
 }
 
+func RemoveUserFromOrg(ctx *context.Context) {
+	u := prepareUserInfo(ctx)
+	if ctx.Written() {
+		return
+	}
+
+	orgID := ctx.PathParamInt64("org_id")
+	org, err := org_model.GetOrgByID(ctx, orgID)
+	if err != nil {
+		ctx.ServerError("GetOrgByID", err)
+		return
+	}
+
+	err = org_service.RemoveOrgUser(ctx, org, u)
+	if org_model.IsErrLastOrgOwner(err) {
+		ctx.Flash.Error(ctx.Tr("form.last_org_owner"))
+		ctx.JSONRedirect("")
+		return
+	} else if err != nil {
+		ctx.ServerError("RemoveOrgUser", err)
+		return
+	}
+
+	ctx.Flash.Success(ctx.Tr("admin.users.org_removed", org.Name))
+	ctx.JSONRedirect("")
+}
+
+func RemoveUserFromAllOrgs(ctx *context.Context) {
+	u := prepareUserInfo(ctx)
+	if ctx.Written() {
+		return
+	}
+
+	orgs, err := org_model.GetUserOrganizations(ctx, u.ID)
+	if err != nil {
+		ctx.ServerError("GetUserOrganizations", err)
+		return
+	}
+
+	removedCount := 0
+	for i := range orgs {
+		err = org_service.RemoveOrgUser(ctx, orgs[i], u)
+		if org_model.IsErrLastOrgOwner(err) {
+			continue
+		} else if err != nil {
+			log.Error("Failed to remove user %s from org %s: %v", u.Name, orgs[i].Name, err)
+			continue
+		}
+		removedCount++
+	}
+
+	if removedCount < len(orgs) {
+		ctx.Flash.Warning(ctx.Tr("admin.users.some_orgs_removed", removedCount, len(orgs)))
+	} else {
+		ctx.Flash.Success(ctx.Tr("admin.users.all_orgs_removed"))
+	}
+	ctx.JSONRedirect("")
+}
+
 // AvatarPost response for change user's avatar request
 func AvatarPost(ctx *context.Context) {
 	u := prepareUserInfo(ctx)
@@ -522,7 +582,7 @@ func AvatarPost(ctx *context.Context) {
 		return
 	}
 
-	form := web.GetForm(ctx).(*forms.AvatarForm)
+	form := web.GetForm[*forms.AvatarForm](ctx)
 	if err := user_setting.UpdateAvatarSetting(ctx, form, u); err != nil {
 		ctx.Flash.Error(err.Error())
 	} else {

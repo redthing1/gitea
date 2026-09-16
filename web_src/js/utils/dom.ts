@@ -1,7 +1,6 @@
 import {debounce} from './func.ts';
 import type {Promisable} from '../types.ts';
 import type $ from 'jquery';
-import {isInFrontendUnitTest} from './testhelper.ts';
 
 type ArrayLikeIterable<T> = ArrayLike<T> & Iterable<T>; // for NodeListOf and Array
 type ElementArg = Element | string | ArrayLikeIterable<Element> | ReturnType<typeof $>;
@@ -73,11 +72,6 @@ export function queryElemSiblings<T extends Element>(el: Element, selector = '*'
 
 /** it works like jQuery.children: only the direct children are selected */
 export function queryElemChildren<T extends Element>(parent: Element | ParentNode, selector = '*', fn?: ElementsCallback<T>): ArrayLikeIterable<T> {
-  if (isInFrontendUnitTest()) {
-    // https://github.com/capricorn86/happy-dom/issues/1620 : ":scope" doesn't work
-    const selected = Array.from<T>(parent.children as any).filter((child) => child.matches(selector));
-    return applyElemsCallback<T>(selected, fn);
-  }
   return applyElemsCallback<T>(parent.querySelectorAll(`:scope > ${selector}`), fn);
 }
 
@@ -241,7 +235,7 @@ export function autosize(textarea: HTMLTextAreaElement, {viewportMarginBottom = 
   };
 }
 
-export function onInputDebounce(fn: () => Promisable<any>) {
+export function onInputDebounce(fn: () => Promisable<void>) {
   return debounce(fn, 300);
 }
 
@@ -261,16 +255,15 @@ export function isElemVisible(el: HTMLElement): boolean {
   // Check if an element is visible, equivalent to jQuery's `:visible` pseudo.
   // This function DOESN'T account for all possible visibility scenarios, its behavior is covered by the tests of "querySingleVisibleElem"
   if (!el) return false;
-  // checking el.style.display is not necessary for browsers, but it is required by some tests with happy-dom because happy-dom doesn't really do layout
-  return Boolean(!el.classList.contains('tw-hidden') && (el.offsetWidth || el.offsetHeight || el.getClientRects().length) && el.style.display !== 'none');
+  return Boolean(!el.classList.contains('tw-hidden') && (el.offsetWidth || el.offsetHeight || el.getClientRects().length));
 }
 
 export function createElementFromHTML<T extends Element>(htmlString: string): T {
   htmlString = htmlString.trim();
+  if (!htmlString.startsWith('<')) throw new Error(`Invalid HTML element string: ${htmlString}`);
   const isLetter = (code: number) => (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
   const startsWithTag = (s: string, tag: string) => {
-    return s.startsWith('<') &&
-      s.substring(1, 1 + tag.length).toLowerCase() === tag.toLowerCase() &&
+    return s.substring(1, 1 + tag.length).toLowerCase() === tag.toLowerCase() &&
       !isLetter(s[1 + tag.length].charCodeAt(0));
   };
   // There is no way to create some elements without a proper parent, jQuery's approach: https://github.com/jquery/jquery/blob/main/src/manipulation/wrapMap.js
@@ -284,7 +277,7 @@ export function createElementFromHTML<T extends Element>(htmlString: string): T 
   return div.firstChild as T;
 }
 
-export function createElementFromAttrs<T extends HTMLElement>(tagName: string, attrs: Record<string, any> | null, ...children: (Node | string)[]): T {
+export function createElementFromAttrs<T extends HTMLElement>(tagName: string, attrs: Record<string, string | number | boolean | null | undefined> | null, ...children: (Node | string)[]): T {
   const el = document.createElement(tagName);
   for (const [key, value] of Object.entries(attrs || {})) {
     if (value === undefined || value === null) continue;
